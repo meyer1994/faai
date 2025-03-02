@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FAAI - Chat</title>
+
+  <style type="text/css">
+    @import "tailwindcss";
+    @import "highlight.js/styles/github.css";
+  </style>
+</head>
+
+<body class="bg-gray-50 text-gray-800">
+  <div class="max-w-2xl mx-auto p-4 h-screen flex flex-col" x-data="chat">
+    <h1 class="text-xl font-bold mb-4">FAAI Chat</h1>
+
+    <div class="flex-1 overflow-y-auto mb-4 border border-gray-200 rounded-md p-2 bg-white">
+      <!-- Chat -->
+      <template x-for="(message, index) in messages" :key="index">
+        <!-- Message -->
+        <div class="
+            flex items-center justify-between
+            rounded-lg m-2 p-3
+            even:flex-row even:text-left even:mr-8
+            odd:flex-row-reverse odd:text-right odd:ml-8
+          " :class="
+            message.role === 'system' ? 'bg-red-100' 
+              : message.role === 'user' ? 'bg-gray-200' 
+              : message.role === 'assistant' ? 'bg-blue-100' 
+              : ''
+          ">
+          <div :title="message.role" x-marked="message.content"></div>
+          <button @click="remove(index)" class="text-red-600 sm cursor-pointer">X</button>
+        </div>
+      </template>
+
+      <!-- Spinner -->
+      <template x-if="status === 'loading'">
+        <div class="flex items-center justify-center p-3">
+          <!--!Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2025 Fonticons, Inc.-->
+          <svg class="w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+            <path
+              d="M222.7 32.1c5 16.9-4.6 34.8-21.5 39.8C121.8 95.6 64 169.1 64 256c0 106 86 192 192 192s192-86 192-192c0-86.9-57.8-160.4-137.1-184.1c-16.9-5-26.6-22.9-21.5-39.8s22.9-26.6 39.8-21.5C434.9 42.1 512 140 512 256c0 141.4-114.6 256-256 256S0 397.4 0 256C0 140 77.1 42.1 182.9 10.6c16.9-5 34.8 4.6 39.8 21.5z" />
+          </svg>
+        </div>
+      </template>
+    </div>
+
+    <!-- Input -->
+    <div class="flex gap-2">
+      <select x-model="role"
+        class="p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <option value="user">User</option>
+        <option value="assistant">Assistant</option>
+        <option value="system">System</option>
+      </select>
+      <input type="text" x-model="input" @keyup.enter="send()" placeholder="Message..." :disabled="status === 'loading'"
+        class="flex-1 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <button @click="send()" :disabled="input.trim() === ''"
+        class="p-2 bg-blue-600 text-white rounded-md disabled:bg-gray-300">
+        Send
+      </button>
+      <button @click="clear()" :disabled="messages.length === 0"
+        class="p-2 bg-red-600 text-white rounded-md disabled:bg-gray-300">
+        Clear
+      </button>
+    </div>
+  </div>
+
+  <script type="module">
+    import Alpine from "alpinejs";
+    import { Marked } from "marked";
+    import { markedHighlight } from "marked-highlight";
+    import hljs from "highlight.js";
+
+    const API_URL = import.meta.env.VITE_API_URL;
+    if (!API_URL) throw new Error("API_URL is not set");
+
+    const ChatStore = () => ({
+      /**
+       * @type {string}
+       */
+      input: "",
+      /**
+       * @type {'user' | 'assistant' | 'system'}
+       */
+      role: "user",
+      /**
+       * @type {{ role: string, content: string }[]}
+       */
+      messages: [],
+      /**
+       * @type {string}
+       */
+      url: API_URL,
+      /**
+       * @type {'idle' | 'loading' | 'error' | 'success'}
+       */
+      status: "idle",
+      /**
+       * @type {Error | null}
+       */
+      error: null,
+
+      /**
+       * @returns {void}
+       */
+      init() {
+        const messages = localStorage.getItem("messages") || "[]";
+        this.messages = JSON.parse(messages);
+      },
+
+      /**
+       * @returns {Promise<void>}
+       */
+      async send() {
+        const input = this.input.trim();
+        if (input === "") return;
+
+        this.status = "loading";
+        this.messages.push({ role: this.role, content: input });
+
+        try {
+          const response = await this._fetch(this.messages);
+          this.messages.push(response);
+          localStorage.setItem("messages", JSON.stringify(this.messages));
+          this.input = "";
+          this.error = null;
+          this.status = "success";
+        } catch (error) {
+          this.status = "error";
+          this.error = error;
+          this.messages.pop();
+        }
+      },
+
+      /**
+       * @returns {void}
+       */
+      clear() {
+        this.messages = [];
+        localStorage.removeItem("messages");
+      },
+
+      /**
+       * @param {number} index
+       * @returns {void}
+       */
+      remove(index) {
+        this.messages.splice(index, 1);
+        localStorage.setItem("messages", JSON.stringify(this.messages));
+      },
+
+      /**
+       * @param {{ role: string, content: string }[]} messages
+       * @returns {Promise<{ role: string, content: string }>}
+       */
+      async _fetch(messages) {
+        const response = await fetch(this.url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages }),
+        });
+        return await response.json();
+      },
+    });
+
+    const marked = new Marked(
+      markedHighlight({
+        emptyLangClass: "hljs",
+        langPrefix: "hljs language-",
+        highlight(code, lang, info) {
+          const language = hljs.getLanguage(lang) ? lang : "plaintext";
+          const highlightedCode = hljs.highlight(code, { language }).value;
+          return `<pre class="hljs"><code>${highlightedCode}</code></pre>`;
+        },
+      })
+    );
+
+    // Register Alpine.js components and directives
+    document.addEventListener("alpine:init", () => {
+      /**
+       * @param {HTMLElement} el
+       * @param {{
+       *   expression?: string,
+       * }} meta
+       * @param {{
+       *   effect: (Function) => void,
+       *   evaluateLater: (expression?: string) => Function,
+       * }} frame
+       */
+      const directive = (el, meta, frame) => {
+        const toEvaluate = frame.evaluateLater(meta.expression);
+        frame.effect(() => toEvaluate((val) => (el.innerHTML = marked.parse(val))))
+      }
+
+      Alpine.directive("marked", directive);
+
+      // Chat application store
+      Alpine.data("chat", ChatStore);
+    });
+
+    Alpine.start();
+  </script>
+</body>
+
+</html>
