@@ -2,6 +2,6 @@ import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  base: "/",
+  base: process.env.NODE_ENV === "production" ? "/faai/" : "/",
   plugins: [tailwindcss()],
 });
