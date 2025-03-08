@@ -69,13 +69,6 @@ class FaaiStack extends cdk.Stack {
     // Removal policy
     rest.applyRemovalPolicy(RemovalPolicy.DESTROY);
 
-    // OpenAI API Key
-    new cdk.CfnParameter(this, "OPENAI_API_KEY", {
-      type: "String",
-      description: "OpenAI API Key",
-      default: props.OPENAI_API_KEY,
-    });
-
     // Create the /chat resource
     const chat = rest.root.addResource("chat");
 
@@ -171,8 +164,39 @@ class FaaiStack extends cdk.Stack {
       },
     });
 
+    const request = rest.addModel("request", {
+      modelName: "request",
+      contentType: "application/json",
+      schema: {
+        type: apigateway.JsonSchemaType.OBJECT,
+        required: ["messages"],
+        properties: {
+          messages: {
+            type: apigateway.JsonSchemaType.ARRAY,
+            required: ["role", "content"],
+            items: {
+              type: apigateway.JsonSchemaType.OBJECT,
+              properties: {
+                role: { type: apigateway.JsonSchemaType.STRING },
+                content: { type: apigateway.JsonSchemaType.STRING },
+              },
+            },
+          },
+        },
+      },
+    })
+
     // Add POST method with the OpenAI integration
     chat.addMethod("POST", integration, {
+      // validator
+      requestValidatorOptions: {
+        requestValidatorName: "validator",
+        validateRequestBody: true,
+        validateRequestParameters: false,
+      },
+      requestModels: {
+        "application/json": request,
+      },
       // needed for CORS
       methodResponses: [
         {
