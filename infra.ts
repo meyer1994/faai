@@ -1,6 +1,8 @@
 import * as cdk from "aws-cdk-lib";
 import { RemovalPolicy } from "aws-cdk-lib";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
+import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as logs from "aws-cdk-lib/aws-logs";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
 import { Construct } from "constructs";
 
@@ -12,6 +14,7 @@ class FaaiStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: Props) {
     super(scope, id, {});
 
+    // Rest API
     const rest = new apigateway.RestApi(this, `${id}-rest`, {
       restApiName: `${id}-rest`,
       description: "Proxy API for OpenAI requests",
@@ -66,11 +69,28 @@ class FaaiStack extends cdk.Stack {
       cloudWatchRoleRemovalPolicy: RemovalPolicy.DESTROY,
     });
 
-    // Removal policy
+    // Removal policy, clean up!
     rest.applyRemovalPolicy(RemovalPolicy.DESTROY);
 
-    // Create the /chat resource
-    const chat = rest.root.addResource("chat");
+    // Gets the stage. Used later for metrics
+    const stage = apigateway.Stage.fromStageAttributes(this, `${id}-stage`, {
+      stageName: "prod",
+      restApi: rest,
+    });
+
+    // Undocumented hack that allows you to create the execution log before
+    // performing the first request. The log group is created only on the first
+    // request by API Gateway. By creating one with the same name as the log
+    // group, we can ensure that the log group is created before the first
+    // request and apply all configurations we want.
+    const log = new logs.LogGroup(this, `${id}-logs`, {
+      logGroupName: `API-Gateway-Execution-Logs_${rest.restApiId}/${stage.stageName}`,
+      retention: RetentionDays.THREE_DAYS,
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+
+    // Create the /chat resource (path)
+    const resource = rest.root.addResource("chat");
 
     // Create integration with OpenAI API
     const integration = new apigateway.Integration({
@@ -164,6 +184,7 @@ class FaaiStack extends cdk.Stack {
       },
     });
 
+    // Add request model that will be used for the POST method
     const request = rest.addModel("request", {
       modelName: "request",
       contentType: "application/json",
@@ -184,10 +205,10 @@ class FaaiStack extends cdk.Stack {
           },
         },
       },
-    })
+    });
 
     // Add POST method with the OpenAI integration
-    chat.addMethod("POST", integration, {
+    const method = resource.addMethod("POST", integration, {
       // validator
       requestValidatorOptions: {
         requestValidatorName: "validator",
@@ -219,6 +240,48 @@ class FaaiStack extends cdk.Stack {
         },
       ],
     });
+
+    // Create CloudWatch Dashboard
+    const dashboard = new cloudwatch.Dashboard(this, `${id}-dashboard`, {
+      dashboardName: `${id}-metrics`,
+    });
+
+    // Row 1 - Each call to `addWidgets` adds a new row to the dashboard
+    dashboard.addWidgets(
+      // Total Requests
+      new cloudwatch.GraphWidget({
+        title: "Requests",
+        left: [rest.metricCount(), method.metricCount(stage)],
+        width: 8,
+      }),
+      // Total Errors
+      new cloudwatch.GraphWidget({
+        title: "Errors",
+        left: [rest.metricClientError(), rest.metricServerError()],
+        width: 8,
+      }),
+      // Latency
+      new cloudwatch.GraphWidget({
+        title: "Latency",
+        left: [rest.metricLatency(), rest.metricIntegrationLatency()],
+        width: 8,
+      })
+    );
+
+    // Row 2
+    dashboard.addWidgets(
+      // Logs
+      new cloudwatch.LogQueryWidget({
+        title: "Logs",
+        logGroupNames: [log.logGroupName],
+        queryLines: [
+          "fields @timestamp, @message, @logStream, @log",
+          "sort @timestamp desc",
+          "limit 100",
+        ],
+        width: 24,
+      })
+    );
   }
 }
 
