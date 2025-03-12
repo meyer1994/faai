@@ -1,7 +1,7 @@
 # FAAI - AI Chat Prototype
 
 A quick way to prototype an AI chat interface using AWS API Gateway and
-AlpineJS.
+AlpineJS (without Lambda functions).
 
 ## Development
 
@@ -12,10 +12,12 @@ npm run dev  # start a local server pointing to index.html with hot reloading
 
 ## Infra
 
-We use AWS API Gateway to create create a simpler chat interface with OpenAI
-using VTL expressions to parse the request and response. We also store the
-Authorization token in the API Gateway stage variables, making it hidden from
-our client code.
+There are NO SERVERS! (of course there are, but it is 100% serverless and no
+Lambda functions are used)
+
+We use AWS API Gateway to create a simpler chat interface with OpenAI using VTL
+expressions to parse the request and response. We also store the Authorization
+token in the API Gateway stage variables, making it hidden from our client code.
 
 ### State diagram:
 
@@ -44,7 +46,7 @@ sequenceDiagram
 
 ## Usage
 
-### AWS API Gateway
+### Rest interface
 
 The API Gateway is configured to use the `chat` route with a POST method.
 
@@ -86,3 +88,8 @@ The component is using AlpineJS to handle the state and the interactions.
   <button @click="clear()" :disabled="messages.length === 0">Clear</button>
 </div>
 ```
+
+### Dashboard
+
+The `infra.ts` file creates a CloudWatch dashboard with some widgets to monitor
+the API Gateway.
