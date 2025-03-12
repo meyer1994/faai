@@ -56,7 +56,8 @@
         <option value="assistant">Assistant</option>
         <option value="system">System</option>
       </select>
-      <input type="text" x-model="input" @keyup.enter="send()" placeholder="Message..." :disabled="status === 'loading'"
+      <input type="text" x-model="input" @keyup.enter="await send(); $el.focus()" placeholder="Message..."
+        :disabled="status === 'loading'"
         class="flex-1 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
       <button @click="send()" :disabled="input.trim() === ''"
         class="p-2 bg-blue-600 text-white rounded-md disabled:bg-gray-300">
